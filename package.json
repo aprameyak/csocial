@@ -1,0 +1,16 @@
+{
+  "name": "csocial",
+  "version": "1.0.0",
+  "private": true,
+  "description": "cSocial - The Climbing Community Platform",
+  "scripts": {
+    "backend:dev": "cd backend && npm run dev",
+    "backend:build": "cd backend && npm run build",
+    "backend:seed": "cd backend && npm run db:seed",
+    "mobile:start": "cd mobile && npx expo start",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "setup": "npm run docker:up && sleep 3 && cd backend && npm install && npm run db:migrate && npm run db:seed && cd ../mobile && npm install"
+  }
+}

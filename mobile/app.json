@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "cSocial",
+    "slug": "csocial",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "csocial",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0F0F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.csocial.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "cSocial uses your camera to capture climbing photos and videos.",
+        "NSPhotoLibraryUsageDescription": "cSocial accesses your photo library to upload climbing media.",
+        "NSPhotoLibraryAddUsageDescription": "cSocial saves climbing media to your photo library.",
+        "NSLocationWhenInUseUsageDescription": "cSocial uses your location to find nearby gyms."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0F0F"
+      },
+      "package": "com.csocial.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow cSocial to access your camera."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow cSocial to access your photos.",
+          "cameraPermission": "Allow cSocial to use your camera."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
