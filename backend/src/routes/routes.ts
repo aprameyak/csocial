@@ -10,17 +10,29 @@ import type { AuthenticatedRequest } from '../types';
 const router = Router();
 
 const createRouteSchema = z.object({
-  gymId: z.string(),
-  wallId: z.string().optional(),
+  gymId: z.string().uuid(),
+  wallId: z.string().uuid().optional(),
   name: z.string().max(100).optional(),
-  grade: z.string(),
-  color: z.string(),
-  setterName: z.string().optional(),
+  grade: z.string().max(10),
+  color: z.string().max(50),
+  setterName: z.string().max(100).optional(),
   dateSet: z.string().datetime().optional(),
   expectedRemoval: z.string().datetime().optional(),
   wallAngle: z.enum(['SLAB', 'VERTICAL', 'SLIGHT_OVERHANG', 'OVERHANG', 'STEEP', 'ROOF']).optional(),
-  holdStyle: z.string().optional(),
+  holdStyle: z.string().max(50).optional(),
   isCompetition: z.boolean().optional(),
+  description: z.string().max(1000).optional(),
+});
+
+const updateRouteSchema = z.object({
+  name: z.string().max(100).optional(),
+  grade: z.string().max(10).optional(),
+  color: z.string().max(50).optional(),
+  setterName: z.string().max(100).optional(),
+  dateSet: z.string().datetime().optional(),
+  expectedRemoval: z.string().datetime().optional(),
+  wallAngle: z.enum(['SLAB', 'VERTICAL', 'SLIGHT_OVERHANG', 'OVERHANG', 'STEEP', 'ROOF']).optional(),
+  holdStyle: z.string().max(50).optional(),
   description: z.string().max(1000).optional(),
 });
 
@@ -68,9 +80,17 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
 // POST /
 router.post('/', authenticate, validate(createRouteSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const data = { ...req.body, dateSet: req.body.dateSet ? new Date(req.body.dateSet) : new Date(), expectedRemoval: req.body.expectedRemoval ? new Date(req.body.expectedRemoval) : undefined };
-    const route = await prisma.route.create({ data, include: { gym: { select: { id: true, name: true } }, wall: { select: { id: true, name: true } } } });
-    await prisma.gym.update({ where: { id: data.gymId }, data: { totalRoutes: { increment: 1 } } });
+    const { gymId, wallId, name, grade, color, setterName, dateSet, expectedRemoval, wallAngle, holdStyle, isCompetition, description } = req.body;
+    const route = await prisma.route.create({
+      data: {
+        gymId, wallId, name, grade, color, setterName,
+        dateSet: dateSet ? new Date(dateSet) : new Date(),
+        expectedRemoval: expectedRemoval ? new Date(expectedRemoval) : undefined,
+        wallAngle, holdStyle, isCompetition, description,
+      },
+      include: { gym: { select: { id: true, name: true } }, wall: { select: { id: true, name: true } } },
+    });
+    await prisma.gym.update({ where: { id: gymId }, data: { totalRoutes: { increment: 1 } } });
     res.status(201).json({ success: true, data: route });
   } catch (err) {
     next(err);
@@ -110,9 +130,21 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
 });
 
 // PUT /:id
-router.put('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authenticate, validate(updateRouteSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const route = await prisma.route.update({ where: { id: req.params.id }, data: req.body });
+    const existing = await prisma.route.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!existing) throw new AppError(404, 'Route not found');
+
+    const { name, grade, color, setterName, dateSet, expectedRemoval, wallAngle, holdStyle, description } = req.body;
+    const route = await prisma.route.update({
+      where: { id: req.params.id },
+      data: {
+        name, grade, color, setterName,
+        dateSet: dateSet ? new Date(dateSet) : undefined,
+        expectedRemoval: expectedRemoval ? new Date(expectedRemoval) : undefined,
+        wallAngle, holdStyle, description,
+      },
+    });
     res.json({ success: true, data: route });
   } catch (err) {
     next(err);

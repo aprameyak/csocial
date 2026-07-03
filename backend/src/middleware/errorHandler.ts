@@ -40,6 +40,7 @@ export function errorHandler(
     }
   }
 
-  console.error('Unhandled error:', err);
+  // Log to stderr; never expose stack traces to the client
+  process.stderr.write(`Unhandled error: ${err.stack ?? err.message}\n`);
   res.status(500).json({ success: false, message: 'Internal server error' });
 }

@@ -321,7 +321,7 @@ router.post('/:id/follow', authenticate, async (req: Request, res: Response, nex
       update: {},
     });
 
-    setImmediate(() => notifyFollow(followingId, followerId, followerName).catch(console.error));
+    setImmediate(() => notifyFollow(followingId, followerId, followerName).catch(() => undefined));
 
     res.json({ success: true, message: 'Following' });
   } catch (err) {

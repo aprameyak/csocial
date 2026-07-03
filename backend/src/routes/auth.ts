@@ -157,8 +157,8 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response,
     if (user) {
       const token = uuidv4();
       await redis.setex(`reset:${token}`, 3600, user.id);
-      // In production, send email with reset link
-      console.log(`Password reset token for ${email}: ${token}`);
+      // TODO: Send reset email via transactional email provider (SendGrid / Resend)
+      // Do NOT log the token — it is a credential
     }
 
     res.json({ success: true, message: 'If an account exists with that email, a reset link has been sent' });

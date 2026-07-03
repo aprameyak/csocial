@@ -147,7 +147,7 @@ export async function createClimb(input: CreateClimbInput) {
         );
       }
     } catch (err) {
-      console.error('Background climb processing error:', err);
+      process.stderr.write(`Background climb processing error: ${err}\n`);
     }
   });
 
@@ -189,7 +189,7 @@ export async function deleteClimb(climbId: string, userId: string): Promise<void
   });
 
   // Recalculate climber rating in background
-  setImmediate(() => updateClimberRating(userId).catch(console.error));
+  setImmediate(() => updateClimberRating(userId).catch(() => undefined));
 }
 
 export async function getClimbWithDetails(climbId: string, viewerId?: string) {

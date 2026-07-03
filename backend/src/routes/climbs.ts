@@ -104,18 +104,19 @@ router.post('/:id/like', authenticate, async (req: Request, res: Response, next:
     const userName = (req as AuthenticatedRequest).user.displayName;
     const climbId = req.params.id;
 
-    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true } });
+    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true, isPublic: true } });
     if (!climb) throw new AppError(404, 'Climb not found');
+    if (!climb.isPublic && climb.userId !== userId) throw new AppError(403, 'Forbidden');
 
-    await prisma.like.upsert({
-      where: { userId_climbId: { userId, climbId } },
-      create: { userId, climbId },
-      update: {},
-    });
-
-    await prisma.climb.update({ where: { id: climbId }, data: { likeCount: { increment: 1 } } });
-
-    setImmediate(() => notifyLike(climb.userId, userId, userName, climbId).catch(console.error));
+    // Use a transaction to prevent count drift: only increment if the like is newly created
+    const existing = await prisma.like.findUnique({ where: { userId_climbId: { userId, climbId } } });
+    if (!existing) {
+      await prisma.$transaction([
+        prisma.like.create({ data: { userId, climbId } }),
+        prisma.climb.update({ where: { id: climbId }, data: { likeCount: { increment: 1 } } }),
+      ]);
+      setImmediate(() => notifyLike(climb.userId, userId, userName, climbId).catch(() => undefined));
+    }
 
     res.json({ success: true, message: 'Liked' });
   } catch (err) {
@@ -129,8 +130,14 @@ router.delete('/:id/like', authenticate, async (req: Request, res: Response, nex
     const userId = (req as AuthenticatedRequest).user.id;
     const climbId = req.params.id;
 
-    await prisma.like.deleteMany({ where: { userId, climbId } });
-    await prisma.climb.update({ where: { id: climbId }, data: { likeCount: { decrement: 1 } } });
+    // Only decrement if the like actually existed
+    const existing = await prisma.like.findUnique({ where: { userId_climbId: { userId, climbId } } });
+    if (existing) {
+      await prisma.$transaction([
+        prisma.like.delete({ where: { userId_climbId: { userId, climbId } } }),
+        prisma.climb.update({ where: { id: climbId }, data: { likeCount: { decrement: 1 } } }),
+      ]);
+    }
 
     res.json({ success: true, message: 'Unliked' });
   } catch (err) {
@@ -185,17 +192,22 @@ router.post('/:id/comments', authenticate, validate(commentSchema), async (req: 
     const userName = (req as AuthenticatedRequest).user.displayName;
     const climbId = req.params.id;
 
-    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true } });
+    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true, isPublic: true } });
     if (!climb) throw new AppError(404, 'Climb not found');
+    if (!climb.isPublic && climb.userId !== userId) throw new AppError(403, 'Forbidden');
 
-    const comment = await prisma.comment.create({
-      data: { userId, climbId, content: req.body.content },
-      include: { user: { select: { id: true, username: true, displayName: true, profileImageUrl: true } } },
-    });
+    const content = req.body.content as string;
 
-    await prisma.climb.update({ where: { id: climbId }, data: { commentCount: { increment: 1 } } });
+    // Atomically create comment and increment count
+    const [comment] = await prisma.$transaction([
+      prisma.comment.create({
+        data: { userId, climbId, content },
+        include: { user: { select: { id: true, username: true, displayName: true, profileImageUrl: true } } },
+      }),
+      prisma.climb.update({ where: { id: climbId }, data: { commentCount: { increment: 1 } } }),
+    ]);
 
-    setImmediate(() => notifyComment(climb.userId, userId, userName, climbId, req.body.content).catch(console.error));
+    setImmediate(() => notifyComment(climb.userId, userId, userName, climbId, content).catch(() => undefined));
 
     res.status(201).json({ success: true, data: comment });
   } catch (err) {
@@ -213,8 +225,10 @@ router.delete('/:id/comments/:commentId', authenticate, async (req: Request, res
     const climb = await prisma.climb.findUnique({ where: { id: req.params.id }, select: { userId: true } });
     if (comment.userId !== userId && climb?.userId !== userId) throw new AppError(403, 'Forbidden');
 
-    await prisma.comment.delete({ where: { id: req.params.commentId } });
-    await prisma.climb.update({ where: { id: req.params.id }, data: { commentCount: { decrement: 1 } } });
+    await prisma.$transaction([
+      prisma.comment.delete({ where: { id: req.params.commentId } }),
+      prisma.climb.update({ where: { id: req.params.id }, data: { commentCount: { decrement: 1 } } }),
+    ]);
 
     res.json({ success: true, message: 'Comment deleted' });
   } catch (err) {
@@ -229,16 +243,19 @@ router.post('/:id/congratulate', authenticate, validate(congratSchema), async (r
     const fromName = (req as AuthenticatedRequest).user.displayName;
     const climbId = req.params.id;
 
-    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true } });
+    const climb = await prisma.climb.findUnique({ where: { id: climbId }, select: { userId: true, isPublic: true } });
     if (!climb) throw new AppError(404, 'Climb not found');
+    if (!climb.isPublic && climb.userId !== fromUserId) throw new AppError(403, 'Forbidden');
+
+    const message = req.body.message as string | undefined;
 
     const congrat = await prisma.congratulation.upsert({
       where: { fromUserId_climbId: { fromUserId, climbId } },
-      create: { fromUserId, toUserId: climb.userId, climbId, message: req.body.message },
-      update: { message: req.body.message },
+      create: { fromUserId, toUserId: climb.userId, climbId, message },
+      update: { message },
     });
 
-    setImmediate(() => notifyCongratulation(climb.userId, fromUserId, fromName, climbId, req.body.message).catch(console.error));
+    setImmediate(() => notifyCongratulation(climb.userId, fromUserId, fromName, climbId, message).catch(() => undefined));
 
     res.status(201).json({ success: true, data: congrat });
   } catch (err) {

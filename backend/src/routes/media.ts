@@ -11,19 +11,31 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-// Local storage for development (swap to S3 in production)
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/tmp/csocial-uploads';
+
+const ALLOWED_MIME_TYPES: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+};
+
+// Local storage for development — swap storage to S3 in production
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, '/tmp/csocial-uploads'),
-  filename: (_req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname)}`),
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const ext = ALLOWED_MIME_TYPES[file.mimetype];
+    cb(null, `${uuidv4()}${ext}`);
+  },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB max
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime', 'video/mov'];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Invalid file type'));
+    if (ALLOWED_MIME_TYPES[file.mimetype]) cb(null, true);
+    else cb(new Error('Invalid file type. Allowed: jpeg, png, webp, mp4, mov'));
   },
 });
 
@@ -37,10 +49,11 @@ router.post('/upload', authenticate, uploadLimiter, upload.single('file'), async
     const isVideo = req.file.mimetype.startsWith('video/');
 
     // In production, upload to S3 and return CDN URL
-    // For dev, return a placeholder URL
+    // For dev, serve from local static endpoint
+    const baseUrl = process.env.API_BASE_URL || `http://localhost:${env.PORT}`;
     const url = env.NODE_ENV === 'production'
       ? `https://${env.AWS_S3_BUCKET}.s3.${env.AWS_REGION}.amazonaws.com/${req.file.filename}`
-      : `http://localhost:${env.PORT}/uploads/${req.file.filename}`;
+      : `${baseUrl}/uploads/${req.file.filename}`;
 
     const media = await prisma.media.create({
       data: {

@@ -33,7 +33,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!current) return;
     const merged = { ...current, ...updatedUser };
     set({ user: merged });
-    SecureStore.setItemAsync('csocial_user', JSON.stringify(merged)).catch(console.error);
+    SecureStore.setItemAsync('csocial_user', JSON.stringify(merged)).catch(() => undefined);
   },
 
   logout: async () => {

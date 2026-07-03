@@ -44,11 +44,11 @@ export async function authenticate(
   }
 }
 
-export function optionalAuth(
+export async function optionalAuth(
   req: Request,
   _res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     next();
@@ -57,14 +57,13 @@ export function optionalAuth(
   try {
     const token = authHeader.split(' ')[1];
     const payload = verifyAccessToken(token);
-    prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { id: true, username: true, email: true, displayName: true, profileImageUrl: true, climberRating: true, xpPoints: true, level: true },
-    }).then((user) => {
-      if (user) (req as AuthenticatedRequest).user = user;
-      next();
-    }).catch(() => next());
+    });
+    if (user) (req as AuthenticatedRequest).user = user;
   } catch {
-    next();
+    // Ignore invalid tokens for optional auth
   }
+  next();
 }

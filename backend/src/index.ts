@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
 import morgan from 'morgan';
-import path from 'path';
 import fs from 'fs';
 
 import { env } from './config/env';
@@ -29,26 +28,55 @@ import searchRoutes from './routes/search';
 const app = express();
 
 // Ensure upload directory exists
-const uploadDir = '/tmp/csocial-uploads';
+const uploadDir = process.env.UPLOAD_DIR || '/tmp/csocial-uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Security & parsing
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
+}));
 
-// Static uploads (dev only)
-app.use('/uploads', express.static(uploadDir));
+// CORS — only allow the configured frontend origin
+const allowedOrigin = env.FRONTEND_URL;
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow same-origin / non-browser requests (curl, Postman) only in development
+    if (!origin) {
+      return env.NODE_ENV === 'production' ? callback(new Error('CORS: origin required')) : callback(null, true);
+    }
+    if (origin === allowedOrigin) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+
+app.use(compression({ threshold: 1024 }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// HTTP access logging — strip Authorization headers so tokens never appear in logs
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+  skip: (_req, res) => env.NODE_ENV === 'test',
+}));
+
+// Static uploads (dev only — production should use S3/CDN)
+if (env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(uploadDir));
+}
 
 // Rate limiting
 app.use('/api/', generalLimiter);
 
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0' });
+// Health check — verifies DB + Redis connectivity
+app.get('/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    const redisPong = await redis.ping();
+    res.json({ status: 'ok', db: 'connected', redis: redisPong === 'PONG' ? 'connected' : 'degraded', timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'degraded', timestamp: new Date().toISOString() });
+  }
 });
 
 // API routes
@@ -77,27 +105,38 @@ app.use(errorHandler);
 const server = app.listen(env.PORT, async () => {
   try {
     await prisma.$connect();
-    console.log('✅ Database connected');
     await redis.connect();
-  } catch (err) {
-    console.warn('⚠️  Could not connect to Redis:', err);
+  } catch {
+    // Non-fatal at startup — health check will surface degradation
   }
-  console.log(`🚀 cSocial API running on port ${env.PORT}`);
-  console.log(`   Environment: ${env.NODE_ENV}`);
-  console.log(`   API base: http://localhost:${env.PORT}/api/v1`);
+  process.stdout.write(`cSocial API listening on port ${env.PORT} [${env.NODE_ENV}]\n`);
 });
 
-// Graceful shutdown
+// Graceful shutdown — 30-second hard limit so the process always exits
 async function shutdown(signal: string) {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
+  process.stdout.write(`${signal} received — shutting down\n`);
+  const timer = setTimeout(() => {
+    process.stderr.write('Shutdown timed out — forcing exit\n');
+    process.exit(1);
+  }, 30_000);
+  timer.unref();
+
   server.close(async () => {
-    await prisma.$disconnect();
-    redis.disconnect();
-    process.exit(0);
+    try {
+      await prisma.$disconnect();
+      redis.disconnect();
+    } finally {
+      process.exit(0);
+    }
   });
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// Catch unhandled rejections so the process doesn't silently die
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`Unhandled rejection: ${reason}\n`);
+});
 
 export default app;

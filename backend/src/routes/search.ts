@@ -11,6 +11,8 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const type = (req.query.type as string) || 'all';
 
     if (!q || q.length < 1) throw new AppError(400, 'Search query required');
+    if (q.length > 100) throw new AppError(400, 'Search query too long');
+    if (!['all', 'users', 'gyms', 'routes'].includes(type)) throw new AppError(400, 'Invalid type');
 
     const results: Record<string, unknown[]> = {};
 

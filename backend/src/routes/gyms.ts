@@ -13,17 +13,19 @@ const router = Router();
 const createGymSchema = z.object({
   name: z.string().min(2).max(100),
   description: z.string().max(500).optional(),
-  address: z.string().min(5),
-  city: z.string().min(2),
-  state: z.string().optional(),
-  country: z.string().min(2),
+  address: z.string().min(5).max(200),
+  city: z.string().min(2).max(100),
+  state: z.string().max(100).optional(),
+  country: z.string().min(2).max(100),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
-  website: z.string().url().optional(),
-  phone: z.string().optional(),
-  instagram: z.string().optional(),
-  imageUrl: z.string().url().optional(),
+  website: z.string().url().max(500).optional(),
+  phone: z.string().max(30).optional(),
+  instagram: z.string().max(100).optional(),
+  imageUrl: z.string().url().max(500).optional(),
 });
+
+const updateGymSchema = createGymSchema.partial();
 
 // GET / - list gyms
 router.get('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
@@ -103,7 +105,10 @@ router.get('/nearby', authenticate, async (req: Request, res: Response, next: Ne
 // POST /
 router.post('/', authenticate, validate(createGymSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const gym = await prisma.gym.create({ data: req.body });
+    const { name, description, address, city, state, country, latitude, longitude, website, phone, instagram, imageUrl } = req.body;
+    const gym = await prisma.gym.create({
+      data: { name, description, address, city, state, country, latitude, longitude, website, phone, instagram, imageUrl },
+    });
     res.status(201).json({ success: true, data: gym });
   } catch (err) {
     next(err);
@@ -136,9 +141,16 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
 });
 
 // PUT /:id
-router.put('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authenticate, validate(updateGymSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const gym = await prisma.gym.update({ where: { id: req.params.id }, data: req.body });
+    const existing = await prisma.gym.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!existing) throw new AppError(404, 'Gym not found');
+
+    const { name, description, address, city, state, country, latitude, longitude, website, phone, instagram, imageUrl } = req.body;
+    const gym = await prisma.gym.update({
+      where: { id: req.params.id },
+      data: { name, description, address, city, state, country, latitude, longitude, website, phone, instagram, imageUrl },
+    });
     res.json({ success: true, data: gym });
   } catch (err) {
     next(err);
@@ -192,12 +204,19 @@ router.get('/:id/walls', authenticate, async (req: Request, res: Response, next:
   }
 });
 
+const VALID_METRICS = ['sends_week', 'sends_month', 'hardest_send', 'flash_rate', 'streak', 'climber_rating'] as const;
+const VALID_PERIODS = ['week', 'month', 'all_time'] as const;
+type ValidMetric = typeof VALID_METRICS[number];
+type ValidPeriod = typeof VALID_PERIODS[number];
+
 // GET /:id/leaderboard
 router.get('/:id/leaderboard', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const metric = (req.query.metric as string) || 'sends_week';
-    const period = (req.query.period as string) || 'week';
-    const result = await getGymLeaderboard(req.params.id, metric as never, period as never);
+    const rawMetric = (req.query.metric as string) || 'sends_week';
+    const rawPeriod = (req.query.period as string) || 'week';
+    if (!VALID_METRICS.includes(rawMetric as ValidMetric)) throw new AppError(400, 'Invalid metric');
+    if (!VALID_PERIODS.includes(rawPeriod as ValidPeriod)) throw new AppError(400, 'Invalid period');
+    const result = await getGymLeaderboard(req.params.id, rawMetric as ValidMetric, rawPeriod as ValidPeriod);
     res.json({ success: true, data: result });
   } catch (err) {
     next(err);
