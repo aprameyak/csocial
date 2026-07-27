@@ -8,7 +8,7 @@ export async function createNotification(
   data?: Record<string, unknown>
 ): Promise<void> {
   await prisma.notification.create({
-    data: { userId, type, title, body, data },
+    data: { userId, type, title, body, data: data as unknown as import('@prisma/client').Prisma.InputJsonValue },
   });
 }
 

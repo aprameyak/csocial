@@ -38,7 +38,7 @@ export async function checkAndAwardAchievements(userId: string, newClimb: Climb 
   const unearned = allAchievements.filter((a) => !earnedIds.has(a.id));
 
   for (const achievement of unearned) {
-    const criteria = achievement.criteria as AchievementCriteria;
+    const criteria = achievement.criteria as unknown as AchievementCriteria;
     let earned = false;
 
     switch (criteria.type) {
