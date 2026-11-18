@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSize, FontWeight, Spacing } from '../../src/constants/theme';
 import { Button } from '../../src/components/ui/Button';
 
@@ -10,11 +9,6 @@ export default function WelcomeScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#1a1a2e', '#0f0f0f']}
-        style={StyleSheet.absoluteFill}
-      />
-
       {/* Hero */}
       <View style={styles.hero}>
         <View style={styles.logoContainer}>

@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity, Activit
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, FontWeight, Spacing, BorderRadius } from '../../src/constants/theme';
 import { Avatar } from '../../src/components/ui/Avatar';
